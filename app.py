@@ -813,6 +813,376 @@ with tab2:
     )
 
     # ---------------------------------------------------
+    # GRAFIK KHUSUS: Data Aktual 2025 vs Data Prediksi 2025
+    # (validasi: seberapa dekat model memprediksi tahun yang
+    # datanya sudah tersedia secara aktual)
+    # ---------------------------------------------------
+    st.markdown("### Perbandingan Data Aktual 2025 vs Data Prediksi 2025")
+
+    TAHUN_VALIDASI = 2025
+
+    baris_aktual_validasi = df[
+        (df["Kabupaten/Kota"] == selected_city) &
+        (df["Tahun"] == TAHUN_VALIDASI)
+    ]
+
+    if baris_aktual_validasi.empty:
+        st.warning(f"Data aktual tahun {TAHUN_VALIDASI} untuk {selected_city} tidak tersedia di dataset.")
+    else:
+        nilai_aktual_validasi = float(baris_aktual_validasi["Timbulan Sampah Tahunan(ton)"].iloc[0])
+
+        # Ambil juga data aktual tahun sebelumnya (2024) sebagai konteks tren
+        TAHUN_KONTEKS = TAHUN_VALIDASI - 1
+        baris_aktual_konteks = df[
+            (df["Kabupaten/Kota"] == selected_city) &
+            (df["Tahun"] == TAHUN_KONTEKS)
+        ]
+        nilai_aktual_konteks = (
+            float(baris_aktual_konteks["Timbulan Sampah Tahunan(ton)"].iloc[0])
+            if not baris_aktual_konteks.empty else None
+        )
+
+        # Prediksi dihitung hanya dari data historis SEBELUM tahun validasi,
+        # supaya modelnya benar-benar "menebak" 2025 tanpa mengintip jawabannya
+        df_sebelum_validasi = df[df["Tahun"] < TAHUN_VALIDASI]
+
+        if df_sebelum_validasi[df_sebelum_validasi["Kabupaten/Kota"] == selected_city].empty:
+            st.warning(f"Data historis sebelum {TAHUN_VALIDASI} untuk {selected_city} tidak cukup untuk membuat prediksi pembanding.")
+        else:
+            model_val, data_val, features_val, le_city_val, le_prov_val, metrics_val = train_model(df_sebelum_validasi)
+
+            pred_validasi_df = forecast_city(
+                model=model_val,
+                df=df_sebelum_validasi,
+                features=features_val,
+                le_city=le_city_val,
+                le_prov=le_prov_val,
+                city=selected_city,
+                start_year=TAHUN_VALIDASI,
+                end_year=TAHUN_VALIDASI
+            )
+            nilai_prediksi_validasi = float(pred_validasi_df["Prediksi Timbulan Sampah Tahunan(ton)"].iloc[0])
+
+            selisih_val = nilai_prediksi_validasi - nilai_aktual_validasi
+            persen_val = (selisih_val / nilai_aktual_validasi) * 100 if nilai_aktual_validasi != 0 else 0
+            arah_val = "lebih tinggi" if selisih_val > 0 else ("lebih rendah" if selisih_val < 0 else "sama persis")
+
+            fig_validasi = go.Figure()
+
+            if nilai_aktual_konteks is not None:
+                fig_validasi.add_trace(go.Bar(
+                    x=[f"Aktual {TAHUN_KONTEKS}"],
+                    y=[nilai_aktual_konteks],
+                    marker_color="#38bdf8",
+                    text=[format_angka(nilai_aktual_konteks)],
+                    textposition="outside",
+                    width=0.45,
+                    name=f"Aktual {TAHUN_KONTEKS}"
+                ))
+
+            fig_validasi.add_trace(go.Bar(
+                x=[f"Aktual {TAHUN_VALIDASI}"],
+                y=[nilai_aktual_validasi],
+                marker_color="#22c55e",
+                text=[format_angka(nilai_aktual_validasi)],
+                textposition="outside",
+                width=0.45,
+                name=f"Aktual {TAHUN_VALIDASI}"
+            ))
+
+            fig_validasi.add_trace(go.Bar(
+                x=[f"Prediksi {TAHUN_VALIDASI}"],
+                y=[nilai_prediksi_validasi],
+                marker_color="#f97316",
+                text=[format_angka(nilai_prediksi_validasi)],
+                textposition="outside",
+                width=0.45,
+                name=f"Prediksi {TAHUN_VALIDASI}"
+            ))
+
+            fig_validasi.update_layout(
+                title=f"Data Aktual {TAHUN_KONTEKS} & {TAHUN_VALIDASI} vs Data Prediksi {TAHUN_VALIDASI} - {selected_city}",
+                yaxis_title="Ton/Tahun",
+                template="plotly_dark",
+                height=460,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=20, r=20, t=60, b=20),
+                showlegend=False,
+                yaxis=dict(tickformat=",.0f", showgrid=True, gridcolor="rgba(187,247,208,.10)")
+            )
+            st.plotly_chart(fig_validasi, width="stretch")
+
+            v0, v1, v2, v3 = st.columns(4)
+
+            with v0:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Data Aktual {TAHUN_KONTEKS}</div>
+                    <div class="metric-value">{format_angka(nilai_aktual_konteks) if nilai_aktual_konteks is not None else "-"}</div>
+                    <div class="metric-caption">ton/tahun</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with v1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Data Aktual {TAHUN_VALIDASI}</div>
+                    <div class="metric-value">{format_angka(nilai_aktual_validasi)}</div>
+                    <div class="metric-caption">ton/tahun</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with v2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Data Prediksi {TAHUN_VALIDASI}</div>
+                    <div class="metric-value">{format_angka(nilai_prediksi_validasi)}</div>
+                    <div class="metric-caption">ton/tahun</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with v3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">Selisih Prediksi vs Aktual</div>
+                    <div class="metric-value">{format_angka(abs(selisih_val))}</div>
+                    <div class="metric-caption">Prediksi {arah_val} {abs(persen_val):.2f}% dari aktual</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.caption(
+                f"Grafik ini menampilkan data aktual {TAHUN_KONTEKS} sebagai konteks tren, data aktual "
+                f"{TAHUN_VALIDASI}, dan hasil prediksi model untuk {TAHUN_VALIDASI}. Model dilatih hanya "
+                f"menggunakan data sebelum tahun {TAHUN_VALIDASI} (tanpa 'mengintip' data aktual "
+                f"{TAHUN_VALIDASI}), sehingga selisihnya mencerminkan akurasi prediksi yang sesungguhnya."
+            )
+
+    # ---------------------------------------------------
+    # GRAFIK BACKTEST PER TAHUN: Data Aktual vs Data Prediksi
+    # ditampilkan berdampingan untuk SETIAP tahun historis
+    # (bukan cuma satu tahun), supaya kelihatan pola akurasi
+    # model dari tahun ke tahun
+    # ---------------------------------------------------
+    st.markdown("### Grafik Per Tahun: Data Aktual vs Data Prediksi")
+    st.caption(
+        "Untuk tiap tahun historis, model dilatih hanya dari data SEBELUM tahun tersebut, lalu "
+        "diminta menebak tahun itu. Hasil tebakan (prediksi) dibandingkan dengan data aktual yang "
+        "sesungguhnya terjadi pada tahun yang sama."
+    )
+
+    riwayat_kota = df[df["Kabupaten/Kota"] == selected_city].sort_values("Tahun")
+    tahun_tersedia_kota = riwayat_kota["Tahun"].tolist()
+
+    # Butuh minimal 2 tahun data sebelum tahun target, supaya fitur lag_1 & lag_2 terisi wajar
+    tahun_bisa_divalidasi = [t for t in tahun_tersedia_kota if len(df[(df["Tahun"] < t) & (df["Kabupaten/Kota"] == selected_city)]) >= 2]
+
+    if len(tahun_bisa_divalidasi) < 2:
+        st.warning("Data historis untuk wilayah ini belum cukup panjang untuk membuat grafik backtest per tahun.")
+    else:
+        hasil_backtest = []
+
+        for tahun_target in tahun_bisa_divalidasi:
+            data_sebelum_target = df[df["Tahun"] < tahun_target]
+
+            model_bt, _, features_bt, le_city_bt, le_prov_bt, _ = train_model(data_sebelum_target)
+
+            pred_bt_df = forecast_city(
+                model=model_bt,
+                df=data_sebelum_target,
+                features=features_bt,
+                le_city=le_city_bt,
+                le_prov=le_prov_bt,
+                city=selected_city,
+                start_year=tahun_target,
+                end_year=tahun_target
+            )
+
+            if pred_bt_df.empty:
+                continue
+
+            nilai_aktual_bt = float(
+                df[(df["Kabupaten/Kota"] == selected_city) & (df["Tahun"] == tahun_target)]
+                ["Timbulan Sampah Tahunan(ton)"].iloc[0]
+            )
+            nilai_prediksi_bt = float(pred_bt_df["Prediksi Timbulan Sampah Tahunan(ton)"].iloc[0])
+
+            hasil_backtest.append({
+                "Tahun": tahun_target,
+                "Data Aktual": nilai_aktual_bt,
+                "Data Prediksi": nilai_prediksi_bt
+            })
+
+        backtest_df = pd.DataFrame(hasil_backtest)
+
+        if backtest_df.empty:
+            st.warning("Grafik backtest per tahun belum bisa dibuat untuk wilayah ini.")
+        else:
+            fig_backtest = go.Figure()
+
+            fig_backtest.add_trace(go.Scatter(
+                x=backtest_df["Tahun"],
+                y=backtest_df["Data Aktual"],
+                mode="lines+markers+text",
+                name="Data Aktual",
+                line=dict(width=4, color="#22c55e"),
+                marker=dict(size=9, color="#22c55e"),
+                text=[format_angka(v) for v in backtest_df["Data Aktual"]],
+                textposition="top center",
+                textfont=dict(size=11, color="#bbf7d0"),
+                hovertemplate="Tahun %{x}<br>Aktual: %{y:,.2f} ton<extra></extra>"
+            ))
+
+            fig_backtest.add_trace(go.Scatter(
+                x=backtest_df["Tahun"],
+                y=backtest_df["Data Prediksi"],
+                mode="lines+markers+text",
+                name="Data Prediksi",
+                line=dict(width=4, color="#f97316", dash="dash"),
+                marker=dict(size=10, color="#f97316", symbol="diamond"),
+                text=[format_angka(v) for v in backtest_df["Data Prediksi"]],
+                textposition="bottom center",
+                textfont=dict(size=11, color="#fed7aa"),
+                hovertemplate="Tahun %{x}<br>Prediksi: %{y:,.2f} ton<extra></extra>"
+            ))
+
+            fig_backtest.update_layout(
+                title=f"Data Aktual vs Data Prediksi per Tahun - {selected_city}",
+                xaxis_title="Tahun",
+                yaxis_title="Ton/Tahun",
+                template="plotly_dark",
+                height=520,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=20, r=20, t=70, b=20),
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="right", x=1),
+                xaxis=dict(dtick=1, showgrid=True, gridcolor="rgba(187,247,208,.08)"),
+                yaxis=dict(tickformat=",.0f", showgrid=True, gridcolor="rgba(187,247,208,.10)")
+            )
+            st.plotly_chart(fig_backtest, width="stretch")
+
+            backtest_tampil = backtest_df.copy()
+            backtest_tampil["Selisih (ton)"] = backtest_tampil["Data Prediksi"] - backtest_tampil["Data Aktual"]
+            backtest_tampil["Selisih (%)"] = (
+                backtest_tampil["Selisih (ton)"] / backtest_tampil["Data Aktual"] * 100
+            )
+
+            backtest_tampil_str = backtest_tampil.copy()
+            for kolom in ["Data Aktual", "Data Prediksi", "Selisih (ton)"]:
+                backtest_tampil_str[kolom] = backtest_tampil_str[kolom].apply(format_angka)
+            backtest_tampil_str["Selisih (%)"] = backtest_tampil_str["Selisih (%)"].apply(lambda v: f"{v:.2f}%")
+
+            st.dataframe(backtest_tampil_str, width="stretch", hide_index=True)
+
+            csv_backtest = backtest_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download tabel backtest per tahun CSV",
+                data=csv_backtest,
+                file_name=f"backtest_aktual_prediksi_{selected_city.replace(' ', '_')}.csv",
+                mime="text/csv"
+            )
+
+    # ---------------------------------------------------
+    # GRAFIK KHUSUS: Data Aktual 2025 vs Data Prediksi 2026
+    # (tetap tampil apa pun pengaturan rentang tahun di sidebar)
+    # ---------------------------------------------------
+    st.markdown("### Perbandingan Data Aktual 2025 vs Data Prediksi 2026")
+
+    TAHUN_AKTUAL_TETAP = 2025
+    TAHUN_PREDIKSI_TETAP = 2026
+
+    baris_aktual_2025 = df[
+        (df["Kabupaten/Kota"] == selected_city) &
+        (df["Tahun"] == TAHUN_AKTUAL_TETAP)
+    ]
+
+    if baris_aktual_2025.empty:
+        st.warning(f"Data aktual tahun {TAHUN_AKTUAL_TETAP} untuk {selected_city} tidak tersedia di dataset.")
+    else:
+        nilai_aktual_2025 = float(baris_aktual_2025["Timbulan Sampah Tahunan(ton)"].iloc[0])
+
+        pred_2026_df = forecast_city(
+            model=model,
+            df=df,
+            features=features,
+            le_city=le_city,
+            le_prov=le_prov,
+            city=selected_city,
+            start_year=TAHUN_PREDIKSI_TETAP,
+            end_year=TAHUN_PREDIKSI_TETAP
+        )
+        nilai_prediksi_2026 = float(pred_2026_df["Prediksi Timbulan Sampah Tahunan(ton)"].iloc[0])
+
+        selisih_2526 = nilai_prediksi_2026 - nilai_aktual_2025
+        persen_2526 = (selisih_2526 / nilai_aktual_2025) * 100 if nilai_aktual_2025 != 0 else 0
+        arah_2526 = "naik" if selisih_2526 > 0 else ("turun" if selisih_2526 < 0 else "tetap")
+
+        fig_2025_2026 = go.Figure()
+
+        fig_2025_2026.add_trace(go.Bar(
+            x=[f"Aktual {TAHUN_AKTUAL_TETAP}"],
+            y=[nilai_aktual_2025],
+            name="Data Aktual",
+            marker_color="#22c55e",
+            text=[format_angka(nilai_aktual_2025)],
+            textposition="outside",
+            width=0.45
+        ))
+
+        fig_2025_2026.add_trace(go.Bar(
+            x=[f"Prediksi {TAHUN_PREDIKSI_TETAP}"],
+            y=[nilai_prediksi_2026],
+            name="Data Prediksi",
+            marker_color="#f97316",
+            text=[format_angka(nilai_prediksi_2026)],
+            textposition="outside",
+            width=0.45
+        ))
+
+        fig_2025_2026.update_layout(
+            title=f"Data Aktual {TAHUN_AKTUAL_TETAP} vs Data Prediksi {TAHUN_PREDIKSI_TETAP} - {selected_city}",
+            yaxis_title="Ton/Tahun",
+            template="plotly_dark",
+            height=460,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=20, r=20, t=60, b=20),
+            showlegend=False,
+            yaxis=dict(tickformat=",.0f", showgrid=True, gridcolor="rgba(187,247,208,.10)")
+        )
+        st.plotly_chart(fig_2025_2026, width="stretch")
+
+        k2025, k2026, kstatus = st.columns(3)
+
+        with k2025:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Data Aktual {TAHUN_AKTUAL_TETAP}</div>
+                <div class="metric-value">{format_angka(nilai_aktual_2025)}</div>
+                <div class="metric-caption">ton/tahun</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with k2026:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Data Prediksi {TAHUN_PREDIKSI_TETAP}</div>
+                <div class="metric-value">{format_angka(nilai_prediksi_2026)}</div>
+                <div class="metric-caption">ton/tahun</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with kstatus:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Status</div>
+                <div class="metric-value">{arah_2526.upper()}</div>
+                <div class="metric-caption">Selisih {format_angka(abs(selisih_2526))} ton ({persen_2526:.2f}%)</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ---------------------------------------------------
     # ERROR / EVALUASI MODEL - ditampilkan langsung
     # di bawah grafik prediksi supaya mudah dibaca
     # ---------------------------------------------------
