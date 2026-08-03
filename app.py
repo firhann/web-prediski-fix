@@ -462,25 +462,21 @@ selected_city = st.sidebar.selectbox(
     index=cities.index("Kota Bandung") if "Kota Bandung" in cities else 0
 )
 
-year_range = st.sidebar.slider(
-    "Rentang tahun historis",
-    min_value=int(min(years)),
-    max_value=int(max(years)),
-    value=(int(min(years)), int(max(years)))
-)
+default_start_year = 2025
+min_start_year = min(int(max(years)), default_start_year)
 
 start_pred = st.sidebar.number_input(
     "Mulai tahun prediksi",
-    min_value=int(max(years)) + 1,
+    min_value=min_start_year,
     max_value=int(max(years)) + 20,
-    value=int(max(years)) + 1
+    value=default_start_year
 )
 
 end_pred = st.sidebar.number_input(
     "Sampai tahun prediksi",
     min_value=int(start_pred),
     max_value=int(max(years)) + 20,
-    value=int(max(years)) + 5
+    value=default_start_year + 4
 )
 
 ranking_year = st.sidebar.selectbox(
@@ -558,8 +554,7 @@ with m4:
 # =========================================================
 # TAB DASHBOARD
 # =========================================================
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📈 Tren Data",
+tab2, tab3, tab4 = st.tabs([
     "🔮 Prediksi",
     "🏙️ Ranking Wilayah",
     "📄 Dataset"
@@ -567,63 +562,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 
 # =========================================================
-# TAB 1 TREND
-# =========================================================
-with tab1:
-    st.markdown('<div class="section-title">Tren Historis Wilayah</div>', unsafe_allow_html=True)
-
-    filtered_city = df[
-        (df["Kabupaten/Kota"] == selected_city) &
-        (df["Tahun"].between(year_range[0], year_range[1]))
-    ].copy()
-
-    c1, c2 = st.columns([1.45, 1])
-
-    with c1:
-        fig_line = go.Figure()
-        fig_line.add_trace(go.Scatter(
-            x=filtered_city["Tahun"],
-            y=filtered_city["Timbulan Sampah Tahunan(ton)"],
-            mode="lines+markers",
-            name="Tahunan",
-            line=dict(width=4),
-            marker=dict(size=9)
-        ))
-        fig_line.update_layout(
-            title=f"Timbulan Sampah Tahunan - {selected_city}",
-            xaxis_title="Tahun",
-            yaxis_title="Ton/Tahun",
-            template="plotly_dark",
-            height=460,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=20, r=20, t=60, b=20)
-        )
-        st.plotly_chart(fig_line, width="stretch")
-
-    with c2:
-        fig_bar = px.bar(
-            filtered_city,
-            x="Tahun",
-            y="Timbulan Sampah Harian(ton)",
-            title=f"Timbulan Sampah Harian - {selected_city}",
-            labels={"Timbulan Sampah Harian(ton)": "Ton/Hari"}
-        )
-        fig_bar.update_layout(
-            template="plotly_dark",
-            height=460,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=20, r=20, t=60, b=20)
-        )
-        st.plotly_chart(fig_bar, width="stretch")
-
-    st.markdown("Data historis wilayah terpilih")
-    st.dataframe(filtered_city, width="stretch", hide_index=True)
-
-
-# =========================================================
-# TAB 2 PREDIKSI
+# TAB PREDIKSI
 # =========================================================
 with tab2:
     st.markdown('<div class="section-title">Prediksi Volume Sampah Tahun Berikutnya</div>', unsafe_allow_html=True)
