@@ -292,6 +292,74 @@ def format_angka(value):
     return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def interpretasi_model(mae, rmse, r2, skala_rata2):
+    """Menyusun narasi otomatis seberapa akurat model, berdasarkan MAE, RMSE, R²."""
+
+    # --- Kategori R² ---
+    if r2 >= 0.85:
+        label_r2 = "sangat baik"
+        emoji_r2 = "🟢"
+    elif r2 >= 0.65:
+        label_r2 = "cukup baik"
+        emoji_r2 = "🟡"
+    elif r2 >= 0.30:
+        label_r2 = "kurang optimal"
+        emoji_r2 = "🟠"
+    else:
+        label_r2 = "lemah"
+        emoji_r2 = "🔴"
+
+    # --- MAE relatif terhadap skala rata-rata data (dalam %) ---
+    if skala_rata2 and skala_rata2 != 0:
+        mae_persen = (mae / skala_rata2) * 100
+    else:
+        mae_persen = 0.0
+
+    if mae_persen <= 5:
+        label_mae = "sangat kecil"
+    elif mae_persen <= 15:
+        label_mae = "relatif kecil"
+    elif mae_persen <= 30:
+        label_mae = "cukup besar"
+    else:
+        label_mae = "besar"
+
+    # --- Selisih RMSE vs MAE, indikasi outlier ---
+    if mae > 0:
+        rasio_rmse_mae = rmse / mae
+    else:
+        rasio_rmse_mae = 1.0
+
+    if rasio_rmse_mae <= 1.15:
+        catatan_outlier = "error tersebar cukup merata di semua titik data (tidak banyak prediksi yang meleset ekstrem)."
+    elif rasio_rmse_mae <= 1.5:
+        catatan_outlier = "ada beberapa titik data dengan selisih prediksi yang lebih besar dari rata-rata."
+    else:
+        catatan_outlier = "terdapat beberapa titik data dengan selisih prediksi yang jauh lebih besar dibanding titik lainnya (outlier)."
+
+    kesimpulan = (
+        f"{emoji_r2} **Model tergolong {label_r2}** untuk menjelaskan pola data historis "
+        f"(R² = {r2:.4f}). Rata-rata selisih prediksi terhadap data aktual (MAE) adalah "
+        f"**{format_angka(mae)} ton/tahun**, yang tergolong **{label_mae}** "
+        f"(~{mae_persen:.2f}% dari rata-rata volume sampah tahunan). "
+        f"RMSE tercatat **{format_angka(rmse)} ton/tahun** — {catatan_outlier}"
+    )
+
+    if r2 >= 0.65 and mae_persen <= 15:
+        rekomendasi = (
+            "Secara umum, hasil prediksi pada grafik di atas cukup bisa diandalkan sebagai "
+            "estimasi, meski tetap perlu dibaca sebagai perkiraan, bukan angka pasti."
+        )
+    else:
+        rekomendasi = (
+            "Karena akurasi model masih terbatas, sebaiknya anggap garis prediksi pada grafik "
+            "sebagai estimasi kasar. Menambah jumlah data historis atau fitur lain bisa membantu "
+            "meningkatkan akurasi model."
+        )
+
+    return kesimpulan + " " + rekomendasi, label_r2
+
+
 def make_features(df):
     """Membuat fitur model dari data historis."""
     data = df.copy()
@@ -697,6 +765,54 @@ with tab2:
     )
 
     # ---------------------------------------------------
+    # TABEL SANDING: Tahun | Data Aktual | Data Prediksi
+    # digabung jadi satu tabel supaya angka aktual dan
+    # prediksi mudah dibandingkan berdampingan per tahun
+    # ---------------------------------------------------
+    st.markdown("Tabel sanding: data aktual vs prediksi")
+
+    tabel_aktual = actual_for_chart.rename(columns={"Volume": "Data Aktual (ton)"})
+    tabel_prediksi = prediction_for_chart.rename(columns={"Volume": "Data Prediksi (ton)"})
+
+    tabel_sanding = pd.merge(
+        tabel_aktual,
+        tabel_prediksi,
+        on="Tahun",
+        how="outer"
+    ).sort_values("Tahun").reset_index(drop=True)
+
+    tabel_sanding["Tahun"] = tabel_sanding["Tahun"].astype(int)
+    tabel_sanding["Keterangan"] = np.where(
+        tabel_sanding["Data Prediksi (ton)"].notna(),
+        "Prediksi",
+        "Aktual"
+    )
+
+    tabel_sanding_tampil = tabel_sanding.copy()
+    tabel_sanding_tampil["Data Aktual (ton)"] = tabel_sanding_tampil["Data Aktual (ton)"].apply(
+        lambda v: format_angka(v) if pd.notna(v) else "-"
+    )
+    tabel_sanding_tampil["Data Prediksi (ton)"] = tabel_sanding_tampil["Data Prediksi (ton)"].apply(
+        lambda v: format_angka(v) if pd.notna(v) else "-"
+    )
+
+    st.dataframe(
+        tabel_sanding_tampil[["Tahun", "Data Aktual (ton)", "Data Prediksi (ton)", "Keterangan"]],
+        width="stretch",
+        hide_index=True
+    )
+
+    csv_sanding = tabel_sanding[["Tahun", "Data Aktual (ton)", "Data Prediksi (ton)", "Keterangan"]].to_csv(
+        index=False
+    ).encode("utf-8")
+    st.download_button(
+        "Download tabel sanding aktual vs prediksi CSV",
+        data=csv_sanding,
+        file_name=f"sanding_aktual_prediksi_{selected_city.replace(' ', '_')}.csv",
+        mime="text/csv"
+    )
+
+    # ---------------------------------------------------
     # ERROR / EVALUASI MODEL - ditampilkan langsung
     # di bawah grafik prediksi supaya mudah dibaca
     # ---------------------------------------------------
@@ -734,6 +850,28 @@ with tab2:
         "semakin akurat model. R² menunjukkan seberapa baik model menjelaskan variasi data "
         "(1.0 = sempurna, mendekati 0 atau negatif = model kurang cocok)."
     )
+
+    # ---------------------------------------------------
+    # PENJELASAN OTOMATIS: narasi kualitas model berdasarkan
+    # nilai MAE, RMSE, R² yang sudah dihitung di atas
+    # ---------------------------------------------------
+    skala_rata2_kota = actual_for_chart["Volume"].mean() if not actual_for_chart.empty else df["Timbulan Sampah Tahunan(ton)"].mean()
+
+    narasi_error, label_kualitas = interpretasi_model(
+        mae=metrics["MAE"],
+        rmse=metrics["RMSE"],
+        r2=metrics["R2"],
+        skala_rata2=skala_rata2_kota
+    )
+
+    st.markdown("Penjelasan hasil error prediksi vs aktual")
+
+    if label_kualitas in ["sangat baik", "cukup baik"]:
+        st.success(narasi_error)
+    elif label_kualitas == "kurang optimal":
+        st.warning(narasi_error)
+    else:
+        st.error(narasi_error)
 
     p1, p2 = st.columns([1.2, .8])
 
