@@ -813,6 +813,105 @@ with tab2:
     )
 
     # ---------------------------------------------------
+    # GRAFIK KHUSUS: Data Aktual 2025 vs Data Prediksi 2026
+    # (tetap tampil apa pun pengaturan rentang tahun di sidebar)
+    # ---------------------------------------------------
+    st.markdown("### Perbandingan Data Aktual 2025 vs Data Prediksi 2026")
+
+    TAHUN_AKTUAL_TETAP = 2025
+    TAHUN_PREDIKSI_TETAP = 2026
+
+    baris_aktual_2025 = df[
+        (df["Kabupaten/Kota"] == selected_city) &
+        (df["Tahun"] == TAHUN_AKTUAL_TETAP)
+    ]
+
+    if baris_aktual_2025.empty:
+        st.warning(f"Data aktual tahun {TAHUN_AKTUAL_TETAP} untuk {selected_city} tidak tersedia di dataset.")
+    else:
+        nilai_aktual_2025 = float(baris_aktual_2025["Timbulan Sampah Tahunan(ton)"].iloc[0])
+
+        pred_2026_df = forecast_city(
+            model=model,
+            df=df,
+            features=features,
+            le_city=le_city,
+            le_prov=le_prov,
+            city=selected_city,
+            start_year=TAHUN_PREDIKSI_TETAP,
+            end_year=TAHUN_PREDIKSI_TETAP
+        )
+        nilai_prediksi_2026 = float(pred_2026_df["Prediksi Timbulan Sampah Tahunan(ton)"].iloc[0])
+
+        selisih_2526 = nilai_prediksi_2026 - nilai_aktual_2025
+        persen_2526 = (selisih_2526 / nilai_aktual_2025) * 100 if nilai_aktual_2025 != 0 else 0
+        arah_2526 = "naik" if selisih_2526 > 0 else ("turun" if selisih_2526 < 0 else "tetap")
+
+        fig_2025_2026 = go.Figure()
+
+        fig_2025_2026.add_trace(go.Bar(
+            x=[f"Aktual {TAHUN_AKTUAL_TETAP}"],
+            y=[nilai_aktual_2025],
+            name="Data Aktual",
+            marker_color="#22c55e",
+            text=[format_angka(nilai_aktual_2025)],
+            textposition="outside",
+            width=0.45
+        ))
+
+        fig_2025_2026.add_trace(go.Bar(
+            x=[f"Prediksi {TAHUN_PREDIKSI_TETAP}"],
+            y=[nilai_prediksi_2026],
+            name="Data Prediksi",
+            marker_color="#f97316",
+            text=[format_angka(nilai_prediksi_2026)],
+            textposition="outside",
+            width=0.45
+        ))
+
+        fig_2025_2026.update_layout(
+            title=f"Data Aktual {TAHUN_AKTUAL_TETAP} vs Data Prediksi {TAHUN_PREDIKSI_TETAP} - {selected_city}",
+            yaxis_title="Ton/Tahun",
+            template="plotly_dark",
+            height=460,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=20, r=20, t=60, b=20),
+            showlegend=False,
+            yaxis=dict(tickformat=",.0f", showgrid=True, gridcolor="rgba(187,247,208,.10)")
+        )
+        st.plotly_chart(fig_2025_2026, width="stretch")
+
+        k2025, k2026, kstatus = st.columns(3)
+
+        with k2025:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Data Aktual {TAHUN_AKTUAL_TETAP}</div>
+                <div class="metric-value">{format_angka(nilai_aktual_2025)}</div>
+                <div class="metric-caption">ton/tahun</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with k2026:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Data Prediksi {TAHUN_PREDIKSI_TETAP}</div>
+                <div class="metric-value">{format_angka(nilai_prediksi_2026)}</div>
+                <div class="metric-caption">ton/tahun</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with kstatus:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Status</div>
+                <div class="metric-value">{arah_2526.upper()}</div>
+                <div class="metric-caption">Selisih {format_angka(abs(selisih_2526))} ton ({persen_2526:.2f}%)</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ---------------------------------------------------
     # ERROR / EVALUASI MODEL - ditampilkan langsung
     # di bawah grafik prediksi supaya mudah dibaca
     # ---------------------------------------------------
