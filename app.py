@@ -579,32 +579,65 @@ with tab2:
     )
 
     # ---------------------------------------------------
-    # PERUBAHAN: grafik hanya menampilkan garis PREDIKSI
-    # (garis historis dihilangkan dari grafik ini)
+    # GRAFIK GABUNGAN: data AKTUAL (historis) bersandingan
+    # dengan garis PREDIKSI di satu chart yang sama
     # ---------------------------------------------------
+    actual_for_chart = (
+        df[df["Kabupaten/Kota"] == selected_city]
+        .sort_values("Tahun")[["Tahun", "Timbulan Sampah Tahunan(ton)"]]
+        .rename(columns={"Timbulan Sampah Tahunan(ton)": "Volume"})
+    )
+
     prediction_for_chart = pred_df[[
         "Tahun",
-        "Kabupaten/Kota",
         "Prediksi Timbulan Sampah Tahunan(ton)"
     ]].rename(columns={"Prediksi Timbulan Sampah Tahunan(ton)": "Volume"})
 
-    fig_pred = px.line(
-        prediction_for_chart,
-        x="Tahun",
-        y="Volume",
-        markers=True,
-        title=f"Prediksi - {selected_city}",
-        labels={"Volume": "Ton/Tahun"}
-    )
-    fig_pred.update_traces(line=dict(width=4), marker=dict(size=9))
+    # Sambungkan titik terakhir data aktual ke titik pertama prediksi
+    # supaya garis prediksi terlihat bersambung (bukan terputus)
+    if not actual_for_chart.empty and not prediction_for_chart.empty:
+        last_actual_point = actual_for_chart.tail(1)
+        prediction_line_df = pd.concat([last_actual_point, prediction_for_chart], ignore_index=True)
+    else:
+        prediction_line_df = prediction_for_chart
+
+    fig_pred = go.Figure()
+
+    fig_pred.add_trace(go.Scatter(
+        x=actual_for_chart["Tahun"],
+        y=actual_for_chart["Volume"],
+        mode="lines+markers",
+        name="Data Aktual",
+        line=dict(width=4, color="#22c55e"),
+        marker=dict(size=8, color="#22c55e")
+    ))
+
+    fig_pred.add_trace(go.Scatter(
+        x=prediction_line_df["Tahun"],
+        y=prediction_line_df["Volume"],
+        mode="lines+markers",
+        name="Prediksi",
+        line=dict(width=4, color="#f97316", dash="dash"),
+        marker=dict(size=9, color="#f97316", symbol="diamond")
+    ))
+
     fig_pred.update_layout(
+        title=f"Data Aktual vs Prediksi - {selected_city}",
+        xaxis_title="Tahun",
+        yaxis_title="Ton/Tahun",
         template="plotly_dark",
         height=500,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=20, r=20, t=60, b=20)
+        margin=dict(l=20, r=20, t=60, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     st.plotly_chart(fig_pred, width="stretch")
+
+    st.caption(
+        "Garis hijau menunjukkan data timbulan sampah aktual (historis), sedangkan garis "
+        "oranye putus-putus menunjukkan hasil prediksi model untuk tahun-tahun ke depan."
+    )
 
     # ---------------------------------------------------
     # ERROR / EVALUASI MODEL - ditampilkan langsung
