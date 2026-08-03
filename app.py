@@ -603,40 +603,97 @@ with tab2:
 
     fig_pred = go.Figure()
 
+    # Area bayangan tipis di sepanjang zona prediksi, biar langsung
+    # kelihatan mana rentang tahun yang sifatnya perkiraan/estimasi
+    if not prediction_line_df.empty:
+        batas_bawah_shade = prediction_line_df["Tahun"].min()
+        batas_atas_shade = prediction_line_df["Tahun"].max()
+        fig_pred.add_vrect(
+            x0=batas_bawah_shade,
+            x1=batas_atas_shade,
+            fillcolor="#f97316",
+            opacity=0.06,
+            line_width=0,
+            layer="below"
+        )
+
     fig_pred.add_trace(go.Scatter(
         x=actual_for_chart["Tahun"],
         y=actual_for_chart["Volume"],
-        mode="lines+markers",
+        mode="lines+markers+text",
         name="Data Aktual",
         line=dict(width=4, color="#22c55e"),
-        marker=dict(size=8, color="#22c55e")
+        marker=dict(size=9, color="#22c55e", line=dict(width=1.5, color="#052e1a")),
+        text=[format_angka(v) for v in actual_for_chart["Volume"]],
+        textposition="top center",
+        textfont=dict(size=11, color="#bbf7d0"),
+        hovertemplate="Tahun %{x}<br>Aktual: %{y:,.2f} ton<extra></extra>"
     ))
 
     fig_pred.add_trace(go.Scatter(
         x=prediction_line_df["Tahun"],
         y=prediction_line_df["Volume"],
-        mode="lines+markers",
+        mode="lines+markers+text",
         name="Prediksi",
         line=dict(width=4, color="#f97316", dash="dash"),
-        marker=dict(size=9, color="#f97316", symbol="diamond")
+        marker=dict(size=10, color="#f97316", symbol="diamond", line=dict(width=1.5, color="#3b1a04")),
+        text=[format_angka(v) for v in prediction_line_df["Volume"]],
+        textposition="bottom center",
+        textfont=dict(size=11, color="#fed7aa"),
+        hovertemplate="Tahun %{x}<br>Prediksi: %{y:,.2f} ton<extra></extra>"
     ))
 
+    # Garis vertikal penanda batas: sebelum garis ini = data aktual,
+    # sesudah garis ini = mulai wilayah prediksi
+    if not actual_for_chart.empty and not prediction_for_chart.empty:
+        batas_tahun = float(actual_for_chart["Tahun"].max())
+        fig_pred.add_vline(
+            x=batas_tahun,
+            line_width=2,
+            line_dash="dot",
+            line_color="rgba(187,247,208,.55)",
+            annotation_text="Mulai Prediksi",
+            annotation_position="top",
+            annotation_font=dict(size=12, color="#bbf7d0")
+        )
+
     fig_pred.update_layout(
-        title=f"Data Aktual vs Prediksi - {selected_city}",
+        title=dict(
+            text=f"Data Aktual vs Prediksi - {selected_city}",
+            font=dict(size=20)
+        ),
         xaxis_title="Tahun",
         yaxis_title="Ton/Tahun",
         template="plotly_dark",
-        height=500,
+        height=520,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=20, r=20, t=60, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        margin=dict(l=20, r=20, t=70, b=20),
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", y=1.06,
+            xanchor="right", x=1,
+            font=dict(size=13)
+        ),
+        xaxis=dict(
+            dtick=1,
+            showgrid=True,
+            gridcolor="rgba(187,247,208,.08)"
+        ),
+        yaxis=dict(
+            tickformat=",.0f",
+            showgrid=True,
+            gridcolor="rgba(187,247,208,.10)"
+        )
     )
     st.plotly_chart(fig_pred, width="stretch")
 
     st.caption(
-        "Garis hijau menunjukkan data timbulan sampah aktual (historis), sedangkan garis "
-        "oranye putus-putus menunjukkan hasil prediksi model untuk tahun-tahun ke depan."
+        "🟢 Garis hijau = data timbulan sampah **aktual** (historis). "
+        "🟠 Garis oranye putus-putus = hasil **prediksi** model untuk tahun-tahun ke depan. "
+        "Garis putus-putus vertikal menandai batas awal tahun prediksi, dan area oranye pudar "
+        "menunjukkan rentang tahun yang diprediksi."
     )
 
     # ---------------------------------------------------
